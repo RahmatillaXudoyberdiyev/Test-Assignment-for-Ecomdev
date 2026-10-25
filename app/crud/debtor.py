@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 from sqlalchemy import func, select
@@ -6,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.student import Student
 from app.models.payment import Payment
 from app.schemas.debtor import DebtorRead
+
+logger = logging.getLogger("app.crud.debtor")
 
 
 def parse_target_month_range(month_str: Optional[str] = None) -> Tuple[datetime, datetime, str]:
@@ -19,14 +22,14 @@ def parse_target_month_range(month_str: Optional[str] = None) -> Tuple[datetime,
         try:
             parts = month_str.strip().split("-")
             if len(parts) != 2:
-                raise ValueError("Invalid format")
+                raise ValueError("Expected format YYYY-MM")
             year = int(parts[0])
             month = int(parts[1])
             if month < 1 or month > 12:
-                raise ValueError("Invalid month value")
+                raise ValueError("Month must be between 1 and 12")
             month_label = f"{year:04d}-{month:02d}"
         except Exception as error:
-            print(f"[Debtor] Invalid month string '{month_str}', fallback to current month: {error}")
+            logger.warning("Invalid month string '%s', falling back to current month: %s", month_str, error)
             year = now.year
             month = now.month
             month_label = f"{year:04d}-{month:02d}"
@@ -37,6 +40,7 @@ def parse_target_month_range(month_str: Optional[str] = None) -> Tuple[datetime,
     else:
         end_date = datetime(year, month + 1, 1, 0, 0, 0, tzinfo=timezone.utc)
 
+    logger.debug("Computed month range for '%s': start=%s, end=%s", month_label, start_date, end_date)
     return start_date, end_date, month_label
 
 
@@ -46,9 +50,9 @@ async def get_monthly_debtors(
 ) -> List[DebtorRead]:
     """Retrieve students who paid less than their agreed monthly fee for the given month."""
     try:
-        start_date, end_date, _ = parse_target_month_range(month_str)
+        start_date, end_date, month_label = parse_target_month_range(month_str)
+        logger.info("Computing monthly debtors for period: %s", month_label)
 
-        # Using naive dates as secondary boundary check for SQLite date compatibility
         start_naive = start_date.replace(tzinfo=None)
         end_naive = end_date.replace(tzinfo=None)
 
@@ -91,8 +95,8 @@ async def get_monthly_debtors(
                     )
                 )
 
-        print(f"[Debtor] Found {len(debtors)} debtors for period {start_date.strftime('%Y-%m')}")
+        logger.info("Debtor calculation finished: %d debtors found for %s out of %d students evaluated.", len(debtors), month_label, len(rows))
         return debtors
     except Exception as error:
-        print(f"[Debtor Error] Failed to compute monthly debtors: {error}")
+        logger.exception("Failed to calculate monthly debtors for '%s': %s", month_str, error)
         raise

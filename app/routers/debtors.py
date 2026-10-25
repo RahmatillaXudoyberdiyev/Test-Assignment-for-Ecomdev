@@ -1,3 +1,4 @@
+import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,6 +7,7 @@ from app.database import get_db_session
 from app.crud.debtor import get_monthly_debtors
 from app.schemas.debtor import DebtorRead
 
+logger = logging.getLogger("app.routers.debtors")
 router = APIRouter(prefix="/debtors", tags=["Debtors"])
 
 
@@ -19,9 +21,12 @@ async def get_debtors_list(
     session: AsyncSession = Depends(get_db_session),
 ) -> List[DebtorRead]:
     """Retrieve students with outstanding debts for a specified month."""
+    logger.info("HTTP GET /debtors requested for month='%s'", month)
     try:
-        return await get_monthly_debtors(session=session, month_str=month)
+        debtors = await get_monthly_debtors(session=session, month_str=month)
+        return debtors
     except Exception as error:
+        logger.exception("HTTP GET /debtors failed for month='%s': %s", month, error)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Could not compute debtors list: {str(error)}",

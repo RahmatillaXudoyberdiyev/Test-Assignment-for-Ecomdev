@@ -40,18 +40,19 @@ The **Mini Payment-Tracking System** is an asynchronous backend service and Tele
 ## 2. Component Design
 
 ### 2.1 Core Application (`app/`)
+- **`app/logger.py`**: Centralized structured logging configuration (`setup_logging`) formatting messages with timestamps, levels, and subsystem names.
 - **`app/config.py`**: Settings management using Pydantic Settings reading from `.env`.
-- **`app/database.py`**: Async SQLite engine (`sqlite+aiosqlite:///...`), async session factory (`async_sessionmaker`), and declarative Base.
+- **`app/database.py`**: Async SQLite engine (`sqlite+aiosqlite:///...`), async session factory (`async_sessionmaker`), and declarative Base with connection lifecycle logging.
 - **`app/models/`**:
   - `Student`: `id`, `name`, `phone_number`, `group`, `monthly_payment_amount`, `created_at`.
   - `Payment`: `id`, `student_id` (foreign key), `amount`, `date`.
 - **`app/schemas/`**: Pydantic models for validation, request bodies, and response serialization.
-- **`app/crud/`**: Pure async database functions for student operations, payment recording, and monthly debtor aggregation.
+- **`app/crud/`**: Pure async database functions for student operations, payment recording, and monthly debtor aggregation with granular execution diagnostics.
 - **`app/routers/`**:
-  - `/students`: Full CRUD for student records.
+  - `/students`: Full CRUD for student records with error handling and request tracking.
   - `/payments`: Register payments and view student payment records.
   - `/debtors`: Query debtors for specified `YYYY-MM`.
-- **`app/main.py`**: FastAPI entrypoint configuring routers and Swagger UI exposed at `/api`.
+- **`app/main.py`**: FastAPI entrypoint with `RequestLoggingMiddleware` (tracking request methods, paths, durations, and HTTP status codes) and Swagger UI exposed at `/api`.
 
 ### 2.2 Telegram Bot (`bot/`)
 - Built with **`aiogram` 3.x**.
@@ -107,4 +108,5 @@ For a target month `YYYY-MM`:
 - **Zero Heavy Dependencies**: Uses SQLite so evaluators do not need Docker or external databases.
 - **Asynchronous I/O**: Both API and Bot share asynchronous database sessions via `aiosqlite`.
 - **Isolation of Concerns**: Database operations in `crud/`, schemas in `schemas/`, API endpoints in `routers/`, presentation in `handlers/`.
-- **Fault-Tolerant Error Handling**: All critical endpoints and handlers employ explicit exception handling and structured console output.
+- **Fault-Tolerant Error Handling**: All critical endpoints, database sessions, and bot command handlers employ explicit `try-except` blocks with exception rollbacks and localized fallback responses.
+- **Observability & Diagnostics**: Global structured logging with HTTP request middleware measuring latency and database execution tracking across all operational paths.

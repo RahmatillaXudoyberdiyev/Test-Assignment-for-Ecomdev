@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from aiogram import Router
 from aiogram.filters import Command
@@ -7,6 +8,7 @@ from app.database import async_session_factory
 from app.crud.debtor import get_monthly_debtors
 from bot.localization import get_text
 
+logger = logging.getLogger("bot.handlers.debt")
 router = Router(name="debt_router")
 
 
@@ -14,17 +16,21 @@ router = Router(name="debt_router")
 async def handle_debt_command(message: Message) -> None:
     """Handle /debt command listing debtors for the current month."""
     user_id = message.from_user.id if message.from_user else None
+    username = message.from_user.username if message.from_user else "unknown"
     current_month_str = datetime.now(timezone.utc).strftime("%Y-%m")
+    logger.info("Received /debt command from user_id=%s (@%s) for month=%s", user_id, username, current_month_str)
 
     try:
         async with async_session_factory() as session:
             debtors = await get_monthly_debtors(session=session, month_str=current_month_str)
 
         if not debtors:
+            logger.info("No debtors found for month=%s. Sending empty notice to user_id=%s", current_month_str, user_id)
             text = get_text("no_debtors", user_id=user_id, month=current_month_str)
             await message.answer(text, parse_mode="HTML")
             return
 
+        logger.info("Formatting %d debtors for user_id=%s", len(debtors), user_id)
         header = get_text("debtors_header", user_id=user_id, month=current_month_str)
         items = []
         total_debt = 0.0
@@ -54,7 +60,11 @@ async def handle_debt_command(message: Message) -> None:
 
         full_message = header + "".join(items) + footer
         await message.answer(full_message, parse_mode="HTML")
+        logger.info("Successfully delivered debtor list to user_id=%s", user_id)
     except Exception as error:
-        print(f"[Bot Error] /debt handling failed: {error}")
-        err_msg = get_text("system_error", user_id=user_id)
-        await message.answer(err_msg, parse_mode="HTML")
+        logger.exception("Failed processing /debt for user_id=%s: %s", user_id, error)
+        try:
+            err_msg = get_text("system_error", user_id=user_id)
+            await message.answer(err_msg, parse_mode="HTML")
+        except Exception as reply_err:
+            logger.exception("Failed to send error notification to user_id=%s: %s", user_id, reply_err)

@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from aiogram import Router
 from aiogram.filters import Command
@@ -12,6 +13,7 @@ from app.models.payment import Payment
 from app.schemas.payment import PaymentCreate
 from bot.localization import get_text
 
+logger = logging.getLogger("bot.handlers.pay")
 router = Router(name="pay_router")
 
 
@@ -19,10 +21,13 @@ router = Router(name="pay_router")
 async def handle_pay_command(message: Message) -> None:
     """Handle /pay <student_id> <amount> command."""
     user_id = message.from_user.id if message.from_user else None
-    text = (message.text or "").strip()
-    parts = text.split()
+    username = message.from_user.username if message.from_user else "unknown"
+    raw_command = (message.text or "").strip()
+    logger.info("Received /pay from user_id=%s (@%s): '%s'", user_id, username, raw_command)
 
+    parts = raw_command.split()
     if len(parts) < 3:
+        logger.warning("Invalid /pay syntax from user_id=%s: parts=%s", user_id, parts)
         usage = get_text("pay_usage", user_id=user_id)
         await message.answer(usage, parse_mode="HTML")
         return
@@ -33,28 +38,32 @@ async def handle_pay_command(message: Message) -> None:
     try:
         student_id = int(raw_id)
         amount = float(raw_amount.replace(",", "."))
-    except ValueError:
+    except ValueError as parse_err:
+        logger.warning("Failed parsing /pay parameters ('%s', '%s') from user_id=%s: %s", raw_id, raw_amount, user_id, parse_err)
         err = get_text("pay_invalid_types", user_id=user_id)
         await message.answer(err, parse_mode="HTML")
         return
 
     if student_id <= 0 or amount <= 0:
+        logger.warning("Non-positive /pay values from user_id=%s: student_id=%d, amount=%.2f", user_id, student_id, amount)
         err = get_text("pay_amount_positive", user_id=user_id)
         await message.answer(err, parse_mode="HTML")
         return
 
     try:
         async with async_session_factory() as session:
+            logger.debug("Verifying student existence: student_id=%d", student_id)
             student = await get_student_by_id(session=session, student_id=student_id)
             if not student:
+                logger.warning("Student id=%d does not exist. Rejecting payment from user_id=%s", student_id, user_id)
                 not_found = get_text("student_not_found", user_id=user_id, student_id=student_id)
                 await message.answer(not_found, parse_mode="HTML")
                 return
 
+            logger.info("Recording payment of %.2f for student id=%d (%s)", amount, student.id, student.name)
             payment_in = PaymentCreate(student_id=student_id, amount=amount)
             new_payment = await create_payment(session=session, payment_in=payment_in)
 
-            # Calculate updated monthly statistics for this student
             start_date, end_date, month_label = parse_target_month_range()
             start_naive = start_date.replace(tzinfo=None)
             end_naive = end_date.replace(tzinfo=None)
@@ -103,7 +112,11 @@ async def handle_pay_command(message: Message) -> None:
                 status_balance=status_balance,
             )
             await message.answer(success_msg, parse_mode="HTML")
+            logger.info("Successfully recorded payment id=%d and replied to user_id=%s", new_payment.id, user_id)
     except Exception as error:
-        print(f"[Bot Error] /pay processing failed: {error}")
-        err_msg = get_text("system_error", user_id=user_id)
-        await message.answer(err_msg, parse_mode="HTML")
+        logger.exception("Failed processing /pay for user_id=%s: %s", user_id, error)
+        try:
+            err_msg = get_text("system_error", user_id=user_id)
+            await message.answer(err_msg, parse_mode="HTML")
+        except Exception as reply_err:
+            logger.exception("Failed to send error notification to user_id=%s: %s", user_id, reply_err)
