@@ -48,12 +48,16 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    """Create all database tables if they do not exist."""
+    """Create all database tables if they do not exist and pre-populate test data on first start-up."""
     try:
         logger.info("Initializing database tables for engine: %s", settings.DATABASE_URL)
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         logger.info("Database tables verified and initialized successfully.")
+
+        from app.seed import seed_initial_data
+        async with async_session_factory() as session:
+            await seed_initial_data(session=session)
     except Exception as error:
-        logger.exception("Failed to initialize database tables: %s", error)
+        logger.exception("Failed to initialize database tables or seed data: %s", error)
         raise

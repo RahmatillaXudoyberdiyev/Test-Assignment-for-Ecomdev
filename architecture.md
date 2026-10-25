@@ -46,6 +46,7 @@ The **Mini Payment-Tracking System** is an asynchronous backend service and Tele
 - **`app/models/`**:
   - `Student`: `id`, `name`, `phone_number`, `group`, `monthly_payment_amount`, `created_at`.
   - `Payment`: `id`, `student_id` (foreign key), `amount`, `date`.
+- **`app/seed.py`**: Auto-seeding service populating sample students and payment records on first startup if the database is empty (removable for production).
 - **`app/schemas/`**: Pydantic models for validation, request bodies, and response serialization.
 - **`app/crud/`**: Pure async database functions for student operations, payment recording, and monthly debtor aggregation with granular execution diagnostics.
 - **`app/routers/`**:
