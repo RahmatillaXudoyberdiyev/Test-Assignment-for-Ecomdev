@@ -1,0 +1,25 @@
+# Environment variables
+.env
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Python cache & virtual environment
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# IDE & Editor
+.vscode/
+.idea/
+
+# Gemini logs and tracking files
+gemini_logs/
+GEMINI.md
+local_or_vercel.txt
